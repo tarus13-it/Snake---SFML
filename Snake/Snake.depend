@@ -1,11 +1,13 @@
 # depslib dependency file v1.0
-1758687668 source:e:\btl\snake\main.cpp
+1759973022 source:e:\btl\snake\main.cpp
 	<SFML/Graphics.hpp>
 	<SFML/System.hpp>
 	<SFML/Window.hpp>
 	<vector>
 	<random>
 	<deque>
+	<fstream>
+	<string>
 
 1758144516 e:\sfml-3.0.2\include\sfml\graphics.hpp
 	<SFML/Graphics/BlendMode.hpp>

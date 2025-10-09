@@ -1,219 +1,268 @@
-// Snake Game using SFML 3.0.1
-// Include necessary SFML headers and standard C++ libraries
-#include <SFML/Graphics.hpp>  // For graphics rendering (shapes, window, sprites)
-#include <SFML/System.hpp>    // For system utilities (time, vectors)
-#include <SFML/Window.hpp>    // For window events and input handling
-#include <vector>             // For dynamic arrays to store snake segments
-#include <random>             // For random number generation (food placement)
-#include <deque>              // For double-ended queue (efficient snake movement)
+// Game Rắn Săn Mồi sử dụng SFML 3.0.1
+// Tính năng: Viền wrap-around (xuyên tường) và lưu điểm cao
+#include <SFML/Graphics.hpp>
+#include <SFML/System.hpp>
+#include <SFML/Window.hpp>
+#include <vector>
+#include <random>
+#include <deque>
+#include <fstream>
+#include <string>
 
-// Game constants - defining the game parameters
-const int GRID_SIZE = 20;        // Size of each grid cell in pixels
-const int GRID_WIDTH = 30;       // Number of cells horizontally
-const int GRID_HEIGHT = 20;      // Number of cells vertically
-const float MOVE_DELAY = 0.1f;   // Delay between snake movements in seconds
+// ============= CÁC HẰNG SỐ GAME =============
+const int GRID_SIZE = 20;        // Kích thước mỗi ô trong lưới (pixels)
+const int GRID_WIDTH = 30;       // Số ô theo chiều ngang
+const int GRID_HEIGHT = 20;      // Số ô theo chiều dọc
+const float MOVE_DELAY = 0.1f;   // Thời gian giữa các lần di chuyển (giây)
 
-// Enum to represent the direction of snake movement
+// ============= ENUM HƯỚNG DI CHUYỂN =============
 enum class Direction {
-    Up,    // Snake moves upward (negative Y)
-    Down,  // Snake moves downward (positive Y)
-    Left,  // Snake moves left (negative X)
-    Right  // Snake moves right (positive X)
+    Up,    // Đi lên
+    Down,  // Đi xuống
+    Left,  // Đi trái
+    Right  // Đi phải
 };
 
-// Class representing the Snake game
+// ============= LỚP GAME RẮN SĂN MỒI =============
 class SnakeGame {
 private:
-    // SFML window for rendering the game
+    // --- Cửa sổ game ---
     sf::RenderWindow window;
 
-    // Snake representation
-    std::deque<sf::Vector2i> snake;  // Deque storing snake segments (head at front)
-    Direction currentDirection;       // Current direction the snake is moving
-    Direction nextDirection;          // Next direction (buffered input)
+    // --- Dữ liệu con rắn ---
+    std::deque<sf::Vector2i> snake;  // Danh sách các đoạn thân rắn (đầu ở đầu deque)
+    Direction currentDirection;       // Hướng hiện tại của rắn
+    Direction nextDirection;          // Hướng tiếp theo (lưu input của người chơi)
 
-    // Food representation
-    sf::Vector2i foodPosition;        // Position of the food on the grid
+    // --- Dữ liệu thức ăn ---
+    sf::Vector2i foodPosition;        // Vị trí của thức ăn trên lưới
 
-    // Random number generation
-    std::random_device rd;            // Random device for seeding
-    std::mt19937 gen;                 // Mersenne Twister random generator
-    std::uniform_int_distribution<> distX;  // Distribution for X coordinates
-    std::uniform_int_distribution<> distY;  // Distribution for Y coordinates
+    // --- Bộ tạo số ngẫu nhiên ---
+    std::random_device rd;            // Thiết bị sinh số ngẫu nhiên
+    std::mt19937 gen;                 // Bộ sinh số Mersenne Twister
+    std::uniform_int_distribution<> distX;  // Phân phối cho tọa độ X
+    std::uniform_int_distribution<> distY;  // Phân phối cho tọa độ Y
 
-    // Game state variables
-    bool gameOver;                    // Flag indicating if game has ended
-    bool paused;                      // Flag indicating if game is paused
-    int score;                        // Current score (snake length - initial length)
+    // --- Trạng thái game ---
+    bool gameOver;                    // Cờ đánh dấu game kết thúc
+    bool paused;                      // Cờ đánh dấu game tạm dừng
+    int score;                        // Điểm hiện tại
+    int highScore;                    // Điểm cao nhất
+    std::string highScoreFile;        // Tên file lưu điểm cao
 
-    // Timing variables for controlling snake movement speed
-    sf::Clock moveClock;              // Clock to track time between movements
+    // --- Đồng hồ thời gian ---
+    sf::Clock moveClock;              // Đồng hồ để kiểm soát tốc độ di chuyển
 
-    // Visual elements
-    sf::Font font;                    // Font for displaying text
-    bool fontLoaded;                  // Flag to check if font was loaded successfully
-
-    // Text objects - will be initialized after font is loaded
-    std::unique_ptr<sf::Text> scoreText;      // Pointer to text object for score display
-    std::unique_ptr<sf::Text> gameOverText;   // Pointer to text object for game over message
-    std::unique_ptr<sf::Text> pauseText;      // Pointer to text object for pause message
+    // --- Font và text hiển thị ---
+    sf::Font font;                    // Font chữ
+    bool fontLoaded;                  // Cờ đánh dấu font đã load thành công
+    std::unique_ptr<sf::Text> scoreText;      // Text hiển thị điểm số
+    std::unique_ptr<sf::Text> highScoreText;  // Text hiển thị điểm cao
+    std::unique_ptr<sf::Text> gameOverText;   // Text hiển thị game over
+    std::unique_ptr<sf::Text> pauseText;      // Text hiển thị tạm dừng
 
 public:
-    // Constructor - initializes the game window and all game objects
+    // ============= CONSTRUCTOR - KHỞI TẠO GAME =============
     SnakeGame() :
         window(sf::VideoMode(sf::Vector2u(GRID_WIDTH * GRID_SIZE, GRID_HEIGHT * GRID_SIZE)),
-               "Snake Game - SFML 3.0.1"),  // Create window with calculated dimensions
-        gen(rd()),                           // Initialize random generator with random seed
-        distX(0, GRID_WIDTH - 1),           // X distribution from 0 to grid width-1
-        distY(0, GRID_HEIGHT - 1),          // Y distribution from 0 to grid height-1
-        gameOver(false),                     // Game starts in playing state
-        paused(false),                       // Game starts unpaused
-        score(0),                            // Score starts at 0
-        fontLoaded(false)                    // Font not loaded initially
+               "Snake Game - Wrap-around & High Score"),
+        gen(rd()),                           // Khởi tạo bộ sinh số ngẫu nhiên
+        distX(0, GRID_WIDTH - 1),           // Phân phối X từ 0 đến chiều rộng - 1
+        distY(0, GRID_HEIGHT - 1),          // Phân phối Y từ 0 đến chiều cao - 1
+        gameOver(false),                     // Game bắt đầu chưa kết thúc
+        paused(false),                       // Game bắt đầu không tạm dừng
+        score(0),                            // Điểm bắt đầu = 0
+        highScore(0),                        // Điểm cao mặc định = 0
+        highScoreFile("highscore.txt"),      // File lưu điểm cao
+        fontLoaded(false)                    // Font chưa load
     {
-        // Set frame rate limit for smooth gameplay
-        window.setFramerateLimit(60);
+        window.setFramerateLimit(60);  // Giới hạn 60 FPS
 
-        // Initialize the snake with 3 segments in the middle of the grid
+        // Khởi tạo con rắn ban đầu
         initializeSnake();
 
-        // Set initial direction to right
+        // Đặt hướng ban đầu sang phải
         currentDirection = Direction::Right;
         nextDirection = Direction::Right;
 
-        // Place the first food item
+        // Tạo thức ăn đầu tiên
         generateFood();
 
-        // Try to load font for text display
-        // You can change this path to point to any TTF font file on your system
-        // Common font locations:
-        // Windows: "C:/Windows/Fonts/arial.ttf"
-        // Linux: "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-        // Or put a font file in your project directory
+        // Đọc điểm cao từ file
+        loadHighScore();
+
+        // Thử load font từ nhiều vị trí khác nhau
         if (font.openFromFile("arial.ttf") ||
             font.openFromFile("C:/Windows/Fonts/arial.ttf") ||
             font.openFromFile("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf") ||
             font.openFromFile("/System/Library/Fonts/Helvetica.ttc")) {
             fontLoaded = true;
-            initializeTexts();  // Initialize text objects if font loaded successfully
+            initializeTexts();  // Khởi tạo các text hiển thị
         }
     }
 
-    // Initialize text objects after font is loaded
+    // ============= ĐỌC ĐIỂM CAO TỪ FILE =============
+    void loadHighScore() {
+        std::ifstream file(highScoreFile);  // Mở file để đọc
+
+        if (file.is_open()) {
+            // Nếu file tồn tại và mở được
+            file >> highScore;  // Đọc điểm cao
+            file.close();       // Đóng file
+        } else {
+            // Nếu file không tồn tại, khởi tạo điểm cao = 0
+            highScore = 0;
+        }
+    }
+
+    // ============= LƯU ĐIỂM CAO VÀO FILE =============
+    void saveHighScore() {
+        std::ofstream file(highScoreFile);  // Mở file để ghi (tạo mới nếu chưa có)
+
+        if (file.is_open()) {
+            file << highScore;  // Ghi điểm cao vào file
+            file.close();       // Đóng file
+        }
+    }
+
+    // ============= KHỞI TẠO CÁC TEXT HIỂN THỊ =============
     void initializeTexts() {
-        if (!fontLoaded) return;
+        if (!fontLoaded) return;  // Không làm gì nếu font chưa load
 
-        // Create and setup score text
+        // --- Text điểm số hiện tại ---
         scoreText = std::make_unique<sf::Text>(font, "Score: 0", 20);
-        scoreText->setFillColor(sf::Color::White);
-        scoreText->setPosition(sf::Vector2f(10.f, 10.f));
+        scoreText->setFillColor(sf::Color::White);  // Màu trắng
+        scoreText->setPosition(sf::Vector2f(10.f, 10.f));  // Góc trên trái
 
-        // Create and setup game over text
+        // --- Text điểm cao nhất ---
+        highScoreText = std::make_unique<sf::Text>(font, "High Score: " + std::to_string(highScore), 20);
+        highScoreText->setFillColor(sf::Color::Yellow);  // Màu vàng
+        highScoreText->setPosition(sf::Vector2f(10.f, 35.f));  // Dưới text điểm số
+
+        // --- Text game over ---
         gameOverText = std::make_unique<sf::Text>(font, "GAME OVER! Press R to restart", 30);
-        gameOverText->setFillColor(sf::Color::Red);
+        gameOverText->setFillColor(sf::Color::Red);  // Màu đỏ
 
-        // Center the game over text
+        // Căn giữa text game over
         sf::FloatRect textBounds = gameOverText->getLocalBounds();
         float xPos = (GRID_WIDTH * GRID_SIZE - textBounds.size.x) / 2.f;
         float yPos = (GRID_HEIGHT * GRID_SIZE - textBounds.size.y) / 2.f;
         gameOverText->setPosition(sf::Vector2f(xPos, yPos));
 
-        // Create and setup pause text
+        // --- Text tạm dừng ---
         pauseText = std::make_unique<sf::Text>(font, "PAUSED - Press Space to continue", 25);
-        pauseText->setFillColor(sf::Color::Yellow);
+        pauseText->setFillColor(sf::Color::Yellow);  // Màu vàng
 
-        // Center the pause text
+        // Căn giữa text pause
         textBounds = pauseText->getLocalBounds();
         xPos = (GRID_WIDTH * GRID_SIZE - textBounds.size.x) / 2.f;
         yPos = (GRID_HEIGHT * GRID_SIZE - textBounds.size.y) / 2.f;
         pauseText->setPosition(sf::Vector2f(xPos, yPos));
     }
 
-    // Initialize snake at the center of the grid with 3 segments
+    // ============= KHỞI TẠO CON RẮN =============
     void initializeSnake() {
-        snake.clear();  // Clear any existing snake segments
+        snake.clear();  // Xóa hết các đoạn thân cũ
 
-        // Add 3 initial segments (snake starts horizontally)
-        int startX = GRID_WIDTH / 2;   // Start at horizontal center
-        int startY = GRID_HEIGHT / 2;  // Start at vertical center
+        // Vị trí bắt đầu ở giữa màn hình
+        int startX = GRID_WIDTH / 2;
+        int startY = GRID_HEIGHT / 2;
 
-        // Add segments from head to tail
+        // Tạo 3 đoạn thân ban đầu (nằm ngang)
         for (int i = 0; i < 3; ++i) {
             snake.push_back(sf::Vector2i(startX - i, startY));
         }
     }
 
-    // Generate food at a random position not occupied by the snake
+    // ============= TẠO THỨC ĂN NGẪU NHIÊN =============
     void generateFood() {
         do {
-            // Generate random position
+            // Tạo vị trí ngẫu nhiên
             foodPosition.x = distX(gen);
             foodPosition.y = distY(gen);
-        } while (isSnakePosition(foodPosition));  // Repeat if position overlaps with snake
+        } while (isSnakePosition(foodPosition));  // Lặp lại nếu trùng với thân rắn
     }
 
-    // Check if a given position is occupied by the snake
+    // ============= KIỂM TRA VỊ TRÍ CÓ PHẢI LÀ THÂN RẮN =============
     bool isSnakePosition(const sf::Vector2i& position) {
-        // Iterate through all snake segments
+        // Duyệt qua tất cả các đoạn thân rắn
         for (const auto& segment : snake) {
             if (segment == position) {
-                return true;  // Position is occupied by snake
+                return true;  // Vị trí bị chiếm bởi rắn
             }
         }
-        return false;  // Position is free
+        return false;  // Vị trí trống
     }
 
-    // Main game loop - handles events, updates, and rendering
+    // ============= XỬ LÝ WRAP-AROUND (XUYÊN TƯỜNG) =============
+    sf::Vector2i wrapPosition(sf::Vector2i position) {
+        // Nếu ra ngoài biên trái -> xuất hiện bên phải
+        if (position.x < 0) position.x = GRID_WIDTH - 1;
+
+        // Nếu ra ngoài biên phải -> xuất hiện bên trái
+        if (position.x >= GRID_WIDTH) position.x = 0;
+
+        // Nếu ra ngoài biên trên -> xuất hiện dưới
+        if (position.y < 0) position.y = GRID_HEIGHT - 1;
+
+        // Nếu ra ngoài biên dưới -> xuất hiện trên
+        if (position.y >= GRID_HEIGHT) position.y = 0;
+
+        return position;
+    }
+
+    // ============= VÒNG LẶP CHÍNH CỦA GAME =============
     void run() {
-        // Continue running while window is open
         while (window.isOpen()) {
-            handleEvents();  // Process user input
-            update();        // Update game logic
-            render();        // Draw everything to screen
+            handleEvents();  // Xử lý input từ người chơi
+            update();        // Cập nhật logic game
+            render();        // Vẽ lên màn hình
         }
     }
 
-    // Handle all window events and user input
+    // ============= XỬ LÝ SỰ KIỆN VÀ INPUT =============
     void handleEvents() {
-        // Process all pending events
+        // Xử lý tất cả các sự kiện đang chờ
         while (const std::optional<sf::Event> event = window.pollEvent()) {
-            // Check if window close was requested
+
+            // Sự kiện đóng cửa sổ
             if (event->is<sf::Event::Closed>()) {
                 window.close();
             }
 
-            // Handle keyboard input
+            // Sự kiện nhấn phím
             if (const auto* keyPressed = event->getIf<sf::Event::KeyPressed>()) {
-                // Get the pressed key
                 sf::Keyboard::Key key = keyPressed->code;
 
-                // Handle game over state
+                // Nếu game over, chỉ xử lý phím R (restart)
                 if (gameOver) {
                     if (key == sf::Keyboard::Key::R) {
-                        resetGame();  // Restart the game
+                        resetGame();
                     }
-                    continue;  // Skip other input processing
-                }
-
-                // Handle pause toggle
-                if (key == sf::Keyboard::Key::Space) {
-                    paused = !paused;
                     continue;
                 }
 
-                // Handle direction changes (only when not paused)
+                // Phím Space để tạm dừng/tiếp tục
+                if (key == sf::Keyboard::Key::Space) {
+                    paused = !paused;  // Đảo ngược trạng thái pause
+                    continue;
+                }
+
+                // Xử lý phím điều khiển (chỉ khi không pause)
                 if (!paused) {
-                    // Update next direction based on key press
-                    // Prevent snake from moving back into itself
+                    // Mũi tên lên - không cho đi ngược lại khi đang đi xuống
                     if (key == sf::Keyboard::Key::Up && currentDirection != Direction::Down) {
                         nextDirection = Direction::Up;
                     }
+                    // Mũi tên xuống - không cho đi ngược lại khi đang đi lên
                     else if (key == sf::Keyboard::Key::Down && currentDirection != Direction::Up) {
                         nextDirection = Direction::Down;
                     }
+                    // Mũi tên trái - không cho đi ngược lại khi đang đi phải
                     else if (key == sf::Keyboard::Key::Left && currentDirection != Direction::Right) {
                         nextDirection = Direction::Left;
                     }
+                    // Mũi tên phải - không cho đi ngược lại khi đang đi trái
                     else if (key == sf::Keyboard::Key::Right && currentDirection != Direction::Left) {
                         nextDirection = Direction::Right;
                     }
@@ -222,191 +271,181 @@ public:
         }
     }
 
-    // Update game logic (snake movement, collision detection, etc.)
+    // ============= CẬP NHẬT LOGIC GAME =============
     void update() {
-        // Don't update if game is over or paused
+        // Không cập nhật nếu game over hoặc pause
         if (gameOver || paused) {
             return;
         }
 
-        // Check if enough time has passed for the snake to move
+        // Kiểm tra đã đủ thời gian để di chuyển chưa
         if (moveClock.getElapsedTime().asSeconds() >= MOVE_DELAY) {
-            // Reset the movement clock
-            moveClock.restart();
+            moveClock.restart();  // Reset đồng hồ
 
-            // Update current direction to the buffered next direction
+            // Cập nhật hướng hiện tại
             currentDirection = nextDirection;
 
-            // Calculate new head position based on current direction
-            sf::Vector2i newHead = snake.front();  // Get current head position
+            // Tính vị trí đầu mới dựa vào hướng di chuyển
+            sf::Vector2i newHead = snake.front();
 
             switch (currentDirection) {
                 case Direction::Up:
-                    newHead.y--;  // Move up (decrease Y)
+                    newHead.y--;  // Đi lên (giảm Y)
                     break;
                 case Direction::Down:
-                    newHead.y++;  // Move down (increase Y)
+                    newHead.y++;  // Đi xuống (tăng Y)
                     break;
                 case Direction::Left:
-                    newHead.x--;  // Move left (decrease X)
+                    newHead.x--;  // Đi trái (giảm X)
                     break;
                 case Direction::Right:
-                    newHead.x++;  // Move right (increase X)
+                    newHead.x++;  // Đi phải (tăng X)
                     break;
             }
 
-            // Check for wall collisions (hitting the boundaries)
-            if (newHead.x < 0 || newHead.x >= GRID_WIDTH ||
-                newHead.y < 0 || newHead.y >= GRID_HEIGHT) {
-                gameOver = true;
-                return;
-            }
+            // Áp dụng wrap-around (xuyên tường)
+            newHead = wrapPosition(newHead);
 
-            // Check for self-collision (snake hitting its own body)
+            // Kiểm tra va chạm với chính thân mình
             for (size_t i = 0; i < snake.size(); ++i) {
                 if (snake[i] == newHead) {
                     gameOver = true;
+
+                    // Cập nhật và lưu điểm cao nếu phá kỷ lục
+                    if (score > highScore) {
+                        highScore = score;
+                        saveHighScore();  // Lưu vào file
+
+                        if (fontLoaded && highScoreText) {
+                            highScoreText->setString("High Score: " + std::to_string(highScore));
+                        }
+                    }
                     return;
                 }
             }
 
-            // Add new head to the front of the snake
+            // Thêm đầu mới vào đầu deque
             snake.push_front(newHead);
 
-            // Check if snake ate the food
+            // Kiểm tra ăn được thức ăn không
             if (newHead == foodPosition) {
-                // Increase score
-                score++;
+                score++;  // Tăng điểm
+                generateFood();  // Tạo thức ăn mới
 
-                // Generate new food position
-                generateFood();
-
-                // Update score display if font is loaded
+                // Cập nhật text điểm số
                 if (fontLoaded && scoreText) {
                     scoreText->setString("Score: " + std::to_string(score));
                 }
 
-                // Don't remove tail (snake grows)
+                // Cập nhật điểm cao nếu vượt qua
+                if (score > highScore) {
+                    highScore = score;
+                    saveHighScore();  // Lưu ngay vào file
+
+                    if (fontLoaded && highScoreText) {
+                        highScoreText->setString("High Score: " + std::to_string(highScore));
+                    }
+                }
+
+                // Không xóa đuôi -> rắn dài ra
             } else {
-                // Remove tail segment (snake moves without growing)
+                // Xóa đuôi -> rắn di chuyển bình thường
                 snake.pop_back();
             }
         }
     }
 
-    // Render all game objects to the window
+    // ============= VẼ TẤT CẢ LÊN MÀN HÌNH =============
     void render() {
-        // Clear the window with a dark background color
+        // Xóa màn hình với màu xám đậm
         window.clear(sf::Color(30, 30, 30));
 
-        // Draw the game grid (optional - for visual clarity)
-        drawGrid();
-
-        // Draw the snake
+        // Vẽ con rắn
         for (size_t i = 0; i < snake.size(); ++i) {
-            // Create a rectangle for each segment
-            // Size is GRID_SIZE - 2 to leave a small gap between segments
-            sf::RectangleShape segment(sf::Vector2f(GRID_SIZE - 2.f, GRID_SIZE - 2.f));
+            sf::RectangleShape segment(sf::Vector2f(GRID_SIZE, GRID_SIZE));
 
-            // Head is brighter green, body segments are darker
             if (i == 0) {
-                segment.setFillColor(sf::Color(0, 255, 0));  // Bright green for head
+                // Đầu rắn màu xanh lá sáng
+                segment.setFillColor(sf::Color(0, 255, 0));
             } else {
-                segment.setFillColor(sf::Color(0, 200, 0));  // Darker green for body
+                // Thân rắn màu xanh lá đậm hơn
+                segment.setFillColor(sf::Color(0, 200, 0));
             }
 
-            // Position the segment (with 1 pixel border for grid effect)
-            float xPos = static_cast<float>(snake[i].x * GRID_SIZE + 1);
-            float yPos = static_cast<float>(snake[i].y * GRID_SIZE + 1);
+            // Đặt vị trí của đoạn thân
+            float xPos = static_cast<float>(snake[i].x * GRID_SIZE);
+            float yPos = static_cast<float>(snake[i].y * GRID_SIZE);
             segment.setPosition(sf::Vector2f(xPos, yPos));
             window.draw(segment);
         }
 
-        // Draw the food
-        sf::RectangleShape food(sf::Vector2f(GRID_SIZE - 2.f, GRID_SIZE - 2.f));
-        food.setFillColor(sf::Color::Red);  // Red color for food
-        float foodX = static_cast<float>(foodPosition.x * GRID_SIZE + 1);
-        float foodY = static_cast<float>(foodPosition.y * GRID_SIZE + 1);
+        // Vẽ thức ăn
+        sf::RectangleShape food(sf::Vector2f(GRID_SIZE, GRID_SIZE));
+        food.setFillColor(sf::Color::Red);  // Màu đỏ
+        float foodX = static_cast<float>(foodPosition.x * GRID_SIZE);
+        float foodY = static_cast<float>(foodPosition.y * GRID_SIZE);
         food.setPosition(sf::Vector2f(foodX, foodY));
         window.draw(food);
 
-        // Draw text elements if font is loaded
+        // Vẽ các text nếu font đã load
         if (fontLoaded) {
-            // Draw score text
+            // Vẽ điểm số
             if (scoreText) {
                 window.draw(*scoreText);
             }
 
-            // Draw game over text if game has ended
+            // Vẽ điểm cao
+            if (highScoreText) {
+                window.draw(*highScoreText);
+            }
+
+            // Vẽ text game over nếu game kết thúc
             if (gameOver && gameOverText) {
                 window.draw(*gameOverText);
             }
 
-            // Draw pause text if game is paused
+            // Vẽ text pause nếu đang tạm dừng
             if (paused && !gameOver && pauseText) {
                 window.draw(*pauseText);
             }
         }
 
-        // Display everything on the screen
+        // Hiển thị tất cả lên màn hình
         window.display();
     }
 
-    // Draw grid lines for visual clarity (optional)
-    void drawGrid() {
-        // Set grid line color (very dark gray)
-        sf::Color gridColor(50, 50, 50);
-
-        // Draw vertical lines
-        for (int x = 0; x <= GRID_WIDTH; ++x) {
-            sf::RectangleShape line(sf::Vector2f(1.f, GRID_HEIGHT * GRID_SIZE));
-            line.setPosition(sf::Vector2f(x * GRID_SIZE, 0.f));
-            line.setFillColor(gridColor);
-            window.draw(line);
-        }
-
-        // Draw horizontal lines
-        for (int y = 0; y <= GRID_HEIGHT; ++y) {
-            sf::RectangleShape line(sf::Vector2f(GRID_WIDTH * GRID_SIZE, 1.f));
-            line.setPosition(sf::Vector2f(0.f, y * GRID_SIZE));
-            line.setFillColor(gridColor);
-            window.draw(line);
-        }
-    }
-
-    // Reset the game to initial state
+    // ============= RESET GAME VỀ TRẠNG THÁI BAN ĐẦU =============
     void resetGame() {
-        // Reset game state flags
         gameOver = false;
         paused = false;
         score = 0;
 
-        // Reset snake
+        // Khởi tạo lại rắn
         initializeSnake();
         currentDirection = Direction::Right;
         nextDirection = Direction::Right;
 
-        // Generate new food
+        // Tạo thức ăn mới
         generateFood();
 
-        // Reset movement clock
+        // Reset đồng hồ di chuyển
         moveClock.restart();
 
-        // Update score display if font is loaded
+        // Cập nhật text điểm số
         if (fontLoaded && scoreText) {
             scoreText->setString("Score: 0");
         }
     }
 };
 
-// Main function - entry point of the program
+// ============= HÀM MAIN - ĐIỂM BẮT ĐẦU CHƯƠNG TRÌNH =============
 int main() {
-    // Create an instance of the Snake game
+    // Tạo đối tượng game
     SnakeGame game;
 
-    // Run the game loop
+    // Chạy game loop
     game.run();
 
-    // Return 0 to indicate successful program execution
+    // Kết thúc chương trình
     return 0;
 }
